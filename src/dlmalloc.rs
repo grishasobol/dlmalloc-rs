@@ -15,7 +15,7 @@ use self::alloc::alloc::handle_alloc_error;
 
 use sys;
 
-static DL_CHECKS : bool = true; // cfg!(debug_assertions)
+static DL_CHECKS : bool = cfg!(feature = "gsobol_check"); // cfg!(debug_assertions)
 
 #[allow(unused)]
 #[cfg(target_os = "linux")]

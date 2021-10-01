@@ -12,7 +12,7 @@ A Rust port of the dlmalloc allocator
 """
 
 [package.metadata.docs.rs]
-features = ['global']
+features = ['global', 'gsobol_check']
 
 [lib]
 doctest = false
@@ -45,6 +45,7 @@ debug-assertions = true
 # Enable implementations of the `GlobalAlloc` standard library API, exporting a
 # new `GlobalDlmalloc` as well which implements this trait.
 global = []
+gsobol_check = []
 
 # Enable very expensive debug checks in this crate
 debug = []
