@@ -11,23 +11,24 @@
 //! Support for other platforms is largely untested and unused, but is used when
 //! testing this crate.
 
-#![cfg_attr(feature = "allocator-api", feature(allocator_api))]
 #![cfg_attr(target_env = "sgx", feature(llvm_asm))]
-#![cfg_attr(not(feature = "allocator-api"), allow(dead_code))]
 #![no_std]
 #![deny(missing_docs)]
+#![allow(dead_code)]
+#![allow(clippy::missing_safety_doc)]
 
-#[cfg(feature = "allocator-api")]
-use core::alloc::{Alloc, AllocErr, Layout};
 use core::cmp;
 use core::ptr;
 
-#[cfg(all(feature = "global", not(test)))]
-pub use self::global::GlobalDlmalloc;
-
 mod dlmalloc;
+mod dlverbose;
+
 #[cfg(all(feature = "global", not(test)))]
 mod global;
+#[cfg(all(feature = "global", not(test)))]
+pub use self::global::GlobalDlmalloc;
+#[cfg(all(feature = "global", not(test)))]
+pub use global::get_alloced_mem_size;
 
 /// An allocator instance
 ///
@@ -55,6 +56,7 @@ mod sys;
 #[path = "sgx.rs"]
 mod sys;
 
+#[allow(clippy::new_without_default)]
 impl Dlmalloc {
     /// Creates a new instance of an allocator, same as `DLMALLOC_INIT`.
     pub fn new() -> Dlmalloc {
@@ -82,7 +84,7 @@ impl Dlmalloc {
     #[inline]
     pub unsafe fn calloc(&mut self, size: usize, align: usize) -> *mut u8 {
         let ptr = self.malloc(size, align);
-        if !ptr.is_null() && self.0.calloc_must_clear(ptr) {
+        if !ptr.is_null() {
             ptr::write_bytes(ptr, 0, size);
         }
         ptr
@@ -94,8 +96,7 @@ impl Dlmalloc {
     /// Safety and contracts are largely governed by the `GlobalAlloc::dealloc`
     /// method contracts.
     #[inline]
-    pub unsafe fn free(&mut self, ptr: *mut u8, size: usize, align: usize) {
-        drop((size, align));
+    pub unsafe fn free(&mut self, ptr: *mut u8, _size: usize, _align: usize) {
         self.0.free(ptr)
     }
 
@@ -128,35 +129,9 @@ impl Dlmalloc {
             res
         }
     }
-}
 
-#[cfg(feature = "allocator-api")]
-unsafe impl Alloc for Dlmalloc {
-    #[inline]
-    unsafe fn alloc(&mut self, layout: Layout) -> Result<ptr::NonNull<u8>, AllocErr> {
-        let ptr = <Dlmalloc>::malloc(self, layout.size(), layout.align());
-        ptr::NonNull::new(ptr).ok_or(AllocErr)
-    }
-
-    #[inline]
-    unsafe fn dealloc(&mut self, ptr: ptr::NonNull<u8>, layout: Layout) {
-        <Dlmalloc>::free(self, ptr.as_ptr(), layout.size(), layout.align())
-    }
-
-    #[inline]
-    unsafe fn realloc(
-        &mut self,
-        ptr: ptr::NonNull<u8>,
-        layout: Layout,
-        new_size: usize,
-    ) -> Result<ptr::NonNull<u8>, AllocErr> {
-        let ptr = <Dlmalloc>::realloc(self, ptr.as_ptr(), layout.size(), layout.align(), new_size);
-        ptr::NonNull::new(ptr).ok_or(AllocErr)
-    }
-
-    #[inline]
-    unsafe fn alloc_zeroed(&mut self, layout: Layout) -> Result<ptr::NonNull<u8>, AllocErr> {
-        let ptr = <Dlmalloc>::calloc(self, layout.size(), layout.align());
-        ptr::NonNull::new(ptr).ok_or(AllocErr)
+    /// Returns alloced mem size
+    pub unsafe fn get_alloced_mem_size(&self) -> usize {
+        self.0.get_alloced_mem_size()
     }
 }

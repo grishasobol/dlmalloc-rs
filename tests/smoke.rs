@@ -2,7 +2,9 @@ extern crate dlmalloc;
 extern crate rand;
 
 use dlmalloc::Dlmalloc;
+use rand::rngs::StdRng;
 use rand::Rng;
+use rand::SeedableRng;
 use std::cmp;
 
 #[test]
@@ -23,16 +25,17 @@ fn smoke() {
     }
 }
 
-#[test]
-fn stress() {
+fn run_stress(seed: u64) {
     let mut a = Dlmalloc::new();
-    let mut rng = rand::thread_rng();
+
+    println!("++++++++++++++++++++++ seed = {}\n", seed);
+    let mut rng = StdRng::seed_from_u64(seed);
     let mut ptrs = Vec::new();
-    let max = if cfg!(test_lots) { 1_000_000 } else { 1_000 };
+    let max = if cfg!(test_lots) { 1_000_000 } else { 10_000 };
     unsafe {
-        for _ in 0..max {
-            let free =
-                ptrs.len() > 0 && ((ptrs.len() < 10_000 && rng.gen_weighted_bool(3)) || rng.gen());
+        for _k in 0..max {
+            let free = !ptrs.is_empty()
+                && ((ptrs.len() < 10_000 && rng.gen_bool(1f64 / 3f64)) || rng.gen());
             if free {
                 let idx = rng.gen_range(0, ptrs.len());
                 let (ptr, size, align) = ptrs.swap_remove(idx);
@@ -40,7 +43,7 @@ fn stress() {
                 continue;
             }
 
-            if ptrs.len() > 0 && rng.gen_weighted_bool(100) {
+            if !ptrs.is_empty() && rng.gen_bool(1f64 / 100f64) {
                 let idx = rng.gen_range(0, ptrs.len());
                 let (ptr, size, align) = ptrs.swap_remove(idx);
                 let new_size = if rng.gen() {
@@ -52,12 +55,12 @@ fn stress() {
                 };
                 let mut tmp = Vec::new();
                 for i in 0..cmp::min(size, new_size) {
-                    tmp.push(*ptr.offset(i as isize));
+                    tmp.push(*ptr.add(i));
                 }
                 let ptr = a.realloc(ptr, size, align, new_size);
                 assert!(!ptr.is_null());
                 for (i, byte) in tmp.iter().enumerate() {
-                    assert_eq!(*byte, *ptr.offset(i as isize));
+                    assert_eq!(*byte, *ptr.add(i));
                 }
                 ptrs.push((ptr, new_size, align));
             }
@@ -67,13 +70,13 @@ fn stress() {
             } else {
                 rng.gen_range(1, 128 * 1024)
             };
-            let align = if rng.gen_weighted_bool(10) {
+            let align = if rng.gen_bool(1f64 / 10f64) {
                 1 << rng.gen_range(3, 8)
             } else {
                 8
             };
 
-            let zero = rng.gen_weighted_bool(50);
+            let zero = rng.gen_bool(1f64 / 50f64);
             let ptr = if zero {
                 a.calloc(size, align)
             } else {
@@ -81,11 +84,26 @@ fn stress() {
             };
             for i in 0..size {
                 if zero {
-                    assert_eq!(*ptr.offset(i as isize), 0);
+                    assert_eq!(*ptr.add(i), 0);
                 }
-                *ptr.offset(i as isize) = 0xce;
+                *ptr.add(i) = 0xce;
             }
             ptrs.push((ptr, size, align));
         }
     }
+}
+
+#[test]
+fn many_stress() {
+    for i in 0..200 {
+        run_stress(i);
+    }
+}
+
+#[test]
+fn stress() {
+    let mut rng = rand::thread_rng();
+    let seed: u64 = rng.gen();
+    let seed = seed % 10000;
+    run_stress(seed);
 }
